@@ -183,7 +183,12 @@ $('sid').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('lo
 function startApp(st) {
   ME = st;
   show($('signin'), false); show($('app'), true);
-  $('meName').textContent = st.name; $('meGroup').textContent = st.group;
+  $('meName').textContent = st.name;
+  $('meName').nextElementSibling.textContent = st.isStaff ? '· Instructor / TA' : '· Group ' + st.group;
+  var tabs = document.querySelectorAll('.tab');
+  show(tabs[0], !st.isStaff);
+  tabs.forEach(function (x) { x.classList.toggle('on', x.dataset.t === (st.isStaff ? 'pres' : 'team')); });
+  show($('teamPane'), !st.isStaff); show($('presPane'), !!st.isStaff);
   renderTeam(); renderPres(); window.scrollTo(0, 0);
 }
 
@@ -253,11 +258,28 @@ function renderPres() {
       var w = el('div'); w.style.padding = '12px 0 4px';
       w.appendChild(el('div', 'lbl', (qi + 1) + '. ' + q.q)); w.appendChild(anchors(q));
       var d = dots('p' + g + '_' + qi); d.style.marginTop = '6px'; w.appendChild(d);
+      if (ME.isStaff) {
+        var qta = document.createElement('textarea'); qta.id = 'qc_' + g + '_' + qi; qta.maxLength = 2000;
+        qta.placeholder = 'Comment on this question (optional)'; qta.style.minHeight = '50px'; qta.style.marginTop = '8px';
+        w.appendChild(qta);
+      }
       b.appendChild(w);
     });
-    var cl = el('label', 'lbl', 'Comments / suggestions for Group ' + g + ' (optional, anonymous)');
+    var cl = el('label', 'lbl', ME.isStaff ? 'Comment to Group ' + g + ' (shared with the group as instructor/TA feedback)' : 'Comments / suggestions for Group ' + g + ' (optional, anonymous)');
     var ta = document.createElement('textarea'); ta.maxLength = 2000; ta.id = 'pc_' + g; cl.htmlFor = ta.id;
     b.appendChild(cl); b.appendChild(ta);
+    var pv = null, prIn = [];
+    if (ME.isStaff) {
+      var pl = el('label', 'lbl', '🔒 Private note (instructors/TAs only, never shared)');
+      pv = document.createElement('textarea'); pv.maxLength = 2000; pv.id = 'pv_' + g; pl.htmlFor = pv.id;
+      b.appendChild(pl); b.appendChild(pv);
+      b.appendChild(el('div', 'lbl', 'Comments on individual presenters (optional)'));
+      (ME.members[g] || []).forEach(function (name, i) {
+        var lab = el('label', 'muted', name); lab.style.display = 'block'; lab.style.margin = '8px 0 4px';
+        var inp = document.createElement('input'); inp.type = 'text'; inp.maxLength = 1000; inp.id = 'pr_' + g + '_' + i; lab.htmlFor = inp.id;
+        b.appendChild(lab); b.appendChild(inp); prIn.push({ name: name, el: inp });
+      });
+    }
     var sb = el('button', 'main', done ? 'Update rating' : 'Submit rating for Group ' + g); sb.style.marginTop = '12px';
     var mb = el('div', 'msg');
     b.appendChild(sb); b.appendChild(mb);
@@ -273,17 +295,31 @@ function renderPres() {
         sc.push(v);
       }
       sb.disabled = true; sb.textContent = 'Submitting…';
-      google.script.run
+      var staffPayload = null;
+      if (ME.isStaff) {
+        staffPayload = { scores: sc, qc: [], pub: ta.value, priv: pv.value, pres: {} };
+        for (var k = 0; k < INIT.presQ.length; k++) staffPayload.qc.push($('qc_' + g + '_' + k).value);
+        prIn.forEach(function (o) { staffPayload.pres[o.name] = o.el.value; });
+      }
+      var runner = google.script.run
         .withSuccessHandler(function (st) {
           ME = st; renderPres();
           var t = el('div', 'msg ok', '✓ Your rating for Group ' + g + ' was saved.');
           $('presList').insertBefore(t, $('presList').firstChild);
           window.scrollTo(0, 0);
         })
-        .withFailureHandler(function (e) { sb.disabled = false; sb.textContent = 'Submit rating for Group ' + g; msg(mb, errText(e)); })
-        .submitPresentation(CRED.idx, CRED.sid, g, sc, ta.value);
+        .withFailureHandler(function (e) { sb.disabled = false; sb.textContent = 'Submit rating for Group ' + g; msg(mb, errText(e)); });
+      if (ME.isStaff) runner.submitStaff(CRED.idx, CRED.sid, g, staffPayload);
+      else runner.submitPresentation(CRED.idx, CRED.sid, g, sc, ta.value);
     };
     c.appendChild(h); c.appendChild(b); list.appendChild(c);
+    var prev = ME.isStaff && ME.staffPrev ? ME.staffPrev[g] : null;
+    if (prev) {
+      prev.scores.forEach(function (s, k) { var r = $('p' + g + '_' + k + '_' + s); if (r) r.checked = true; });
+      prev.qc.forEach(function (t, k) { var q = $('qc_' + g + '_' + k); if (q) q.value = t; });
+      ta.value = prev.pub; pv.value = prev.priv;
+      prIn.forEach(function (o) { o.el.value = prev.pres[o.name] || ''; });
+    }
   });
 }
 

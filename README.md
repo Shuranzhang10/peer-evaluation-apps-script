@@ -52,6 +52,15 @@ Students open one link, pick their group and name, and verify with their student
 
 After any code change, click **Deploy → Manage deployments → ✏️ → Version: New version → Deploy**. The URL stays the same.
 
+## Instructor / TA mode
+
+Put instructors and TAs in group **99** in the `ROSTER`. They appear as **Instructor / TA** in the group list and:
+- skip Part 1, and can rate **every** group at any time
+- can add a comment for each question, a comment to the group (shareable), a private note (staff only), and a comment for each presenter
+- see their previous answers when they come back, so they can edit them
+
+Their scores are stored in the `Staff` sheet and **never mixed** into the student averages. The **Staff Results** sheet shows staff averages next to the student average, plus all staff comments.
+
 ## Day-to-day settings (no redeploy needed)
 
 Edit the **Settings** sheet:

@@ -53,14 +53,18 @@ const ROSTER = [
   {"name": "Student Seven", "id": "111111117", "group": 3},
   {"name": "Student Eight", "id": "111111118", "group": 3},
   {"name": "Student Nine",  "id": "",          "group": 3},
+  // Group 99 = instructors and TAs (rate every group, extra comment fields, scored separately).
+  {"name": "Instructor Name", "id": "222222221", "group": 99},
+  {"name": "TA Name",         "id": "222222222", "group": 99},
   {"name": "Test Student A", "id": "000000001", "group": 0},
   {"name": "Test Student B", "id": "000000002", "group": 0},
   {"name": "Test Student C", "id": "000000003", "group": 0}
 ];
 
 const TEST_GROUP = 0;  // hidden test group: only shown with ?test=1, excluded from results
+const STAFF_GROUP = 99;  // instructors & TAs: rate every group, extra comments, scored separately
 let PREVIEW_TEST_ = false;  // true only inside previewWithTestData()
-const SH = { SETTINGS: 'Settings', TEAM: 'Teammate', SELF: 'Self', PRES: 'Presentation' };
+const SH = { SETTINGS: 'Settings', TEAM: 'Teammate', SELF: 'Self', PRES: 'Presentation', STAFF: 'Staff' };
 const COLORS = { dg: '#57d163', lg: '#c3efc8', wh: '#ffffff', ye: '#fff176', re: '#f4a3a0', na: '#eeeeee' };
 
 // ===================== Setup & settings =====================
@@ -87,6 +91,7 @@ function setup() {
   ensureSheet_(ss, SH.TEAM, teamHeader_());
   ensureSheet_(ss, SH.SELF, ['Timestamp', 'Rater', 'Group', 'ID Verified', 'Own contribution', 'Confidential comment']);
   ensureSheet_(ss, SH.PRES, presHeader_());
+  ensureSheet_(ss, SH.STAFF, staffHeader_());
 }
 
 function teamHeader_() {
@@ -140,7 +145,7 @@ function parseGroups_(s) {
 }
 
 function allGroups_() {
-  return Array.from(new Set(ROSTER.map(s => s.group))).filter(g => g !== TEST_GROUP).sort((a, b) => a - b);
+  return Array.from(new Set(ROSTER.map(s => s.group))).filter(g => g !== TEST_GROUP && g !== STAFF_GROUP).sort((a, b) => a - b);
 }
 
 // ===================== Web app =====================
@@ -152,11 +157,11 @@ function doGet() {
 
 // Never sends SBU IDs to the browser.
 function getInitData(includeTest) {
-  const gs = allGroups_().concat(includeTest ? [TEST_GROUP] : []);
+  const gs = allGroups_().concat([STAFF_GROUP], includeTest ? [TEST_GROUP] : []);
   return {
     title: TITLE,
     groups: gs.map(g => ({
-      group: g, label: g === TEST_GROUP ? 'TEST (instructors)' : 'Group ' + g,
+      group: g, label: g === TEST_GROUP ? 'TEST (instructors)' : g === STAFF_GROUP ? 'Instructor / TA' : 'Group ' + g,
       members: ROSTER.map((s, i) => ({ idx: i, name: s.name, group: s.group }))
         .filter(s => s.group === g).map(s => ({ idx: s.idx, name: s.name })),
     })),
@@ -183,6 +188,7 @@ function login(idx, sid) {
 }
 
 function state_(idx, s) {
+  if (s.group === STAFF_GROUP) return staffState_(idx, s);
   const st = settings_();
   return {
     idx: idx, name: s.name, group: s.group,
@@ -235,6 +241,7 @@ function upsert_(sh, rater, key, row) {
  */
 function submitTeam(idx, sid, payload) {
   const v = verify_(idx, sid);
+  if (v.s.group === STAFF_GROUP) throw new Error('Instructors and TAs do not fill in Part 1.');
   if (!settings_().TEAMMATE_OPEN) throw new Error('Teammate evaluation is closed.');
   const me = Number(idx);
   const mates = ROSTER.map((x, i) => ({ i: i, x: x })).filter(o => o.x.group === v.s.group && o.i !== me);
@@ -272,6 +279,7 @@ function upsertSelf_(sh, rater, row) {
 function submitPresentation(idx, sid, group, scores, comment) {
   const v = verify_(idx, sid);
   const st = settings_();
+  if (v.s.group === STAFF_GROUP) throw new Error('Please reload the page to use the instructor/TA form.');
   if (!st.PRESENTATION_OPEN) throw new Error('Presentation evaluation is closed.');
   group = Number(group);
   if (group === v.s.group) throw new Error('You cannot rate your own group.');
@@ -284,6 +292,107 @@ function submitPresentation(idx, sid, group, scores, comment) {
     upsert_(sh, v.s.name, group, [new Date(), v.s.name, v.s.group, v.verified, group].concat(sc, [text_(comment)]));
   } finally { lock.releaseLock(); }
   return state_(Number(idx), v.s);
+}
+
+// ===================== Instructor / TA evaluation =====================
+// Stored in the "Staff" sheet, never mixed into student peer averages.
+function range_(n) { return Array.from({ length: n }, (_, i) => i); }
+
+function staffHeader_() {
+  return ['Timestamp', 'Rater', 'Role', 'ID Verified', 'Rated Group']
+    .concat(PRES_QUESTIONS.map((_, i) => 'Q' + (i + 1)),
+      PRES_QUESTIONS.map((_, i) => 'Q' + (i + 1) + ' comment'),
+      ['Comment to group (shared)', 'Private note (staff only)', 'Comments on presenters']);
+}
+
+function parsePresenters_(txt) {
+  const out = {};
+  String(txt || '').split('\n').forEach(line => {
+    const k = line.indexOf(': ');
+    if (k > 0) out[line.slice(0, k)] = line.slice(k + 2);
+  });
+  return out;
+}
+
+function staffState_(idx, s) {
+  const groups = allGroups_();
+  const nq = PRES_QUESTIONS.length;
+  const prev = {};
+  const sh = SpreadsheetApp.getActive().getSheetByName(SH.STAFF);
+  if (sh && sh.getLastRow() > 1) {
+    sh.getRange(2, 1, sh.getLastRow() - 1, staffHeader_().length).getValues().forEach(r => {
+      if (r[1] !== s.name) return;
+      prev[Number(r[4])] = {
+        scores: r.slice(5, 5 + nq).map(Number),
+        qc: r.slice(5 + nq, 5 + 2 * nq).map(x => String(x || '')),
+        pub: String(r[5 + 2 * nq] || ''),
+        priv: String(r[6 + 2 * nq] || ''),
+        pres: parsePresenters_(r[7 + 2 * nq]),
+      };
+    });
+  }
+  const members = {};
+  groups.forEach(g => { members[g] = ROSTER.filter(x => x.group === g).map(x => x.name); });
+  return {
+    idx: idx, name: s.name, group: s.group, isStaff: true,
+    teamOpen: false, presOpen: true, presGroups: groups, teammates: [], teamDone: false,
+    presDone: Object.keys(prev).map(Number), staffPrev: prev, members: members,
+  };
+}
+
+/** p = { scores: [..], qc: [..per-question comments..], pub: text, priv: text, pres: { name: text } } */
+function submitStaff(idx, sid, group, p) {
+  const v = verify_(idx, sid);
+  if (v.s.group !== STAFF_GROUP) throw new Error('Only instructors and TAs can use this form.');
+  group = Number(group);
+  if (allGroups_().indexOf(group) < 0) throw new Error('Unknown group.');
+  p = p || {};
+  if (!Array.isArray(p.scores) || p.scores.length !== PRES_QUESTIONS.length) throw new Error('Please answer every question (1–5).');
+  const sc = p.scores.map(score_);
+  const qc = PRES_QUESTIONS.map((_, i) => text_((p.qc || [])[i]));
+  const pres = ROSTER.filter(x => x.group === group).map(x => [x.name, text_((p.pres || {})[x.name]).replace(/\s*\n\s*/g, ' ')])
+    .filter(x => x[1]).map(x => x[0] + ': ' + x[1]).join('\n');
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = ensureSheet_(SpreadsheetApp.getActive(), SH.STAFF, staffHeader_());
+    upsert_(sh, v.s.name, group, [new Date(), v.s.name, 'Instructor/TA', v.verified, group]
+      .concat(sc, qc, [text_(p.pub), text_(p.priv), pres]));
+  } finally { lock.releaseLock(); }
+  return state_(Number(idx), v.s);
+}
+
+// "Staff Results": instructor/TA scores and comments per group, next to the student average.
+function buildStaffResults_(ss) {
+  const nq = PRES_QUESTIONS.length;
+  const rows = readRows_(ss, SH.STAFF, staffHeader_().length);
+  const stud = readRows_(ss, SH.PRES, 6 + nq);
+  const sh = freshSheet_(ss, 'Staff Results');
+  let r = writeBlock_(sh, 1, [
+    ['Instructor / TA evaluation (scored separately from students)'],
+    ['"Comment to group" can be shared with the group. "Private notes" are for instructors/TAs only.'],
+  ], null, [0]) + 1;
+  const head = ['Group', '# staff'].concat(PRES_QUESTIONS.map((_, i) => 'Q' + (i + 1)),
+    ['Staff overall', 'Student overall', 'Comments to group (shared)', 'Per-question comments', 'Comments on presenters', 'Private notes (staff only)']);
+  const vals = [head];
+  allGroups_().forEach(g => {
+    const got = rows.filter(x => Number(x[4]) === g);
+    const qAvg = range_(nq).map(q => mean_(got.map(x => Number(x[5 + q]))));
+    const sAll = stud.filter(x => Number(x[4]) === g).map(x => mean_(x.slice(5, 5 + nq).map(Number)));
+    const tag = (x, t) => '[' + x[1] + '] ' + t;
+    const pub = got.filter(x => String(x[5 + 2 * nq]).trim()).map(x => tag(x, String(x[5 + 2 * nq]).trim())).join('\n');
+    const qcs = [];
+    got.forEach(x => range_(nq).forEach(q => {
+      const t = String(x[5 + nq + q]).trim();
+      if (t) qcs.push('Q' + (q + 1) + ' ' + tag(x, t));
+    }));
+    const pres = got.filter(x => String(x[7 + 2 * nq]).trim()).map(x => tag(x, '\n' + String(x[7 + 2 * nq]).trim())).join('\n');
+    const priv = got.filter(x => String(x[6 + 2 * nq]).trim()).map(x => tag(x, String(x[6 + 2 * nq]).trim())).join('\n');
+    vals.push(['Group ' + g, got.length].concat(qAvg.map(r1_), [r1_(mean_(qAvg.filter(x => !isNaN(x)))), r1_(mean_(sAll)), pub, qcs.join('\n'), pres, priv]));
+  });
+  writeBlock_(sh, r, vals, null, [0]);
+  for (let c = head.length - 3; c <= head.length; c++) sh.setColumnWidth(c, 300);
+  sh.setColumnWidth(head.length - 4, 300);
+  sh.getRange(r, 1, vals.length, head.length).setWrap(true).setVerticalAlignment('top');
 }
 
 // Deletes every response submitted by the hidden TEST group.
@@ -318,6 +427,7 @@ function buildResults() {
   buildTeamResults_(ss);
   buildPresResults_(ss);
   buildPresDetail_(ss);
+  buildStaffResults_(ss);
 }
 
 function color_(z) {
