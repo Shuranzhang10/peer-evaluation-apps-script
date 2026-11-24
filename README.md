@@ -58,6 +58,7 @@ Put instructors and TAs in group **99** in the `ROSTER`. They appear as **Instru
 - skip Part 1, and can rate **every** group at any time
 - can add a comment for each question, a comment to the group (shareable), a private note (staff only), and a comment for each presenter
 - see their previous answers when they come back, so they can edit them
+- names listed in `INSTRUCTORS` (in `Code.gs`) also get a **Final grade (/100)** field for each group, shown in Staff Results
 
 Their scores are stored in the `Staff` sheet and **never mixed** into the student averages. The **Staff Results** sheet shows staff averages next to the student average, plus all staff comments.
 

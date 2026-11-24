@@ -63,6 +63,7 @@ const ROSTER = [
 
 const TEST_GROUP = 0;  // hidden test group: only shown with ?test=1, excluded from results
 const STAFF_GROUP = 99;  // instructors & TAs: rate every group, extra comments, scored separately
+const INSTRUCTORS = ['Instructor Name'];  // can also enter the final grade (/100)
 let PREVIEW_TEST_ = false;  // true only inside previewWithTestData()
 const SH = { SETTINGS: 'Settings', TEAM: 'Teammate', SELF: 'Self', PRES: 'Presentation', STAFF: 'Staff' };
 const COLORS = { dg: '#57d163', lg: '#c3efc8', wh: '#ffffff', ye: '#fff176', re: '#f4a3a0', na: '#eeeeee' };
@@ -302,7 +303,7 @@ function staffHeader_() {
   return ['Timestamp', 'Rater', 'Role', 'ID Verified', 'Rated Group']
     .concat(PRES_QUESTIONS.map((_, i) => 'Q' + (i + 1)),
       PRES_QUESTIONS.map((_, i) => 'Q' + (i + 1) + ' comment'),
-      ['Comment to group (shared)', 'Private note (staff only)', 'Comments on presenters']);
+      ['Comment to group (shared)', 'Private note (staff only)', 'Comments on presenters', 'Final grade (/100)']);
 }
 
 function parsePresenters_(txt) {
@@ -328,6 +329,7 @@ function staffState_(idx, s) {
         pub: String(r[5 + 2 * nq] || ''),
         priv: String(r[6 + 2 * nq] || ''),
         pres: parsePresenters_(r[7 + 2 * nq]),
+        grade: (r[8 + 2 * nq] === '' || r[8 + 2 * nq] === undefined) ? '' : String(r[8 + 2 * nq]),
       };
     });
   }
@@ -337,6 +339,7 @@ function staffState_(idx, s) {
     idx: idx, name: s.name, group: s.group, isStaff: true,
     teamOpen: false, presOpen: true, presGroups: groups, teammates: [], teamDone: false,
     presDone: Object.keys(prev).map(Number), staffPrev: prev, members: members,
+    canGrade: INSTRUCTORS.indexOf(s.name) >= 0,
   };
 }
 
@@ -350,13 +353,19 @@ function submitStaff(idx, sid, group, p) {
   if (!Array.isArray(p.scores) || p.scores.length !== PRES_QUESTIONS.length) throw new Error('Please answer every question (1–5).');
   const sc = p.scores.map(score_);
   const qc = PRES_QUESTIONS.map((_, i) => text_((p.qc || [])[i]));
+  let grade = '';
+  if (INSTRUCTORS.indexOf(v.s.name) >= 0 && p.grade !== undefined && p.grade !== null && String(p.grade).trim() !== '') {
+    grade = Number(p.grade);
+    if (!(grade >= 0 && grade <= 100)) throw new Error('Final grade must be a number from 0 to 100.');
+  }
   const pres = ROSTER.filter(x => x.group === group).map(x => [x.name, text_((p.pres || {})[x.name]).replace(/\s*\n\s*/g, ' ')])
     .filter(x => x[1]).map(x => x[0] + ': ' + x[1]).join('\n');
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     const sh = ensureSheet_(SpreadsheetApp.getActive(), SH.STAFF, staffHeader_());
+    sh.getRange(1, 1, 1, staffHeader_().length).setValues([staffHeader_()]).setFontWeight('bold');
     upsert_(sh, v.s.name, group, [new Date(), v.s.name, 'Instructor/TA', v.verified, group]
-      .concat(sc, qc, [text_(p.pub), text_(p.priv), pres]));
+      .concat(sc, qc, [text_(p.pub), text_(p.priv), pres, grade]));
   } finally { lock.releaseLock(); }
   return state_(Number(idx), v.s);
 }
@@ -372,7 +381,7 @@ function buildStaffResults_(ss) {
     ['"Comment to group" can be shared with the group. "Private notes" are for instructors/TAs only.'],
   ], null, [0]) + 1;
   const head = ['Group', '# staff'].concat(PRES_QUESTIONS.map((_, i) => 'Q' + (i + 1)),
-    ['Staff overall', 'Student overall', 'Comments to group (shared)', 'Per-question comments', 'Comments on presenters', 'Private notes (staff only)']);
+    ['Staff overall', 'Student overall', 'Final grade (/100)', 'Comments to group (shared)', 'Per-question comments', 'Comments on presenters', 'Private notes (staff only)']);
   const vals = [head];
   allGroups_().forEach(g => {
     const got = rows.filter(x => Number(x[4]) === g);
@@ -387,7 +396,7 @@ function buildStaffResults_(ss) {
     }));
     const pres = got.filter(x => String(x[7 + 2 * nq]).trim()).map(x => tag(x, '\n' + String(x[7 + 2 * nq]).trim())).join('\n');
     const priv = got.filter(x => String(x[6 + 2 * nq]).trim()).map(x => tag(x, String(x[6 + 2 * nq]).trim())).join('\n');
-    vals.push(['Group ' + g, got.length].concat(qAvg.map(r1_), [r1_(mean_(qAvg.filter(x => !isNaN(x)))), r1_(mean_(sAll)), pub, qcs.join('\n'), pres, priv]));
+    vals.push(['Group ' + g, got.length].concat(qAvg.map(r1_), [r1_(mean_(qAvg.filter(x => !isNaN(x)))), r1_(mean_(sAll)), got.map(x => x[8 + 2 * nq]).filter(x => x !== '' && x !== undefined && x !== null).join(', '), pub, qcs.join('\n'), pres, priv]));
   });
   writeBlock_(sh, r, vals, null, [0]);
   for (let c = head.length - 3; c <= head.length; c++) sh.setColumnWidth(c, 300);

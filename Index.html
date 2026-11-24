@@ -280,6 +280,13 @@ function renderPres() {
         b.appendChild(lab); b.appendChild(inp); prIn.push({ name: name, el: inp });
       });
     }
+    var gi = null;
+    if (ME.isStaff && ME.canGrade) {
+      var gl = el('label', 'lbl', '⭐ Final grade for Group ' + g + ' (out of 100, instructor only)');
+      gi = document.createElement('input'); gi.type = 'number'; gi.min = 0; gi.max = 100; gi.step = 'any'; gi.id = 'gr_' + g; gl.htmlFor = gi.id;
+      gi.style.cssText = 'width:100%;font-size:16px;padding:10px;border:1px solid #bbb;border-radius:8px;';
+      b.appendChild(gl); b.appendChild(gi);
+    }
     var sb = el('button', 'main', done ? 'Update rating' : 'Submit rating for Group ' + g); sb.style.marginTop = '12px';
     var mb = el('div', 'msg');
     b.appendChild(sb); b.appendChild(mb);
@@ -300,6 +307,7 @@ function renderPres() {
         staffPayload = { scores: sc, qc: [], pub: ta.value, priv: pv.value, pres: {} };
         for (var k = 0; k < INIT.presQ.length; k++) staffPayload.qc.push($('qc_' + g + '_' + k).value);
         prIn.forEach(function (o) { staffPayload.pres[o.name] = o.el.value; });
+        if (gi) staffPayload.grade = gi.value;
       }
       var runner = google.script.run
         .withSuccessHandler(function (st) {
@@ -319,6 +327,7 @@ function renderPres() {
       prev.qc.forEach(function (t, k) { var q = $('qc_' + g + '_' + k); if (q) q.value = t; });
       ta.value = prev.pub; pv.value = prev.priv;
       prIn.forEach(function (o) { o.el.value = prev.pres[o.name] || ''; });
+      if (gi) gi.value = prev.grade || '';
     }
   });
 }
