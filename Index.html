@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  :root { --red:#990000; --ink:#1f1f1f; --muted:#666; --line:#ddd; --bg:#f6f6f6; --ok:#1e7e34; --blue:#2b5fd9; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:var(--red); color:#fff; padding:14px 18px; }
+  header h1 { margin:0; font-size:18px; font-weight:600; }
+  main { max-width:820px; margin:0 auto; padding:16px; }
+  h2 { font-size:17px; margin:0 0 10px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:14px; }
+  .qcard { border-left:4px solid var(--blue); }
+  .muted { color:var(--muted); font-size:14px; }
+  .hidden { display:none !important; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:8px; }
+  .pick { background:#fff; color:var(--ink); border:1px solid #bbb; border-radius:8px; padding:12px 8px; font-size:15px; cursor:pointer; }
+  .pick.on { background:var(--red); color:#fff; border-color:var(--red); }
+  input[type=text], textarea { width:100%; font-size:16px; padding:10px; border:1px solid #bbb; border-radius:8px; font-family:inherit; }
+  textarea { min-height:80px; resize:vertical; }
+  button.main { font-size:16px; padding:11px 20px; border-radius:8px; border:0; background:var(--red); color:#fff; cursor:pointer; }
+  button.main[disabled] { opacity:.5; cursor:default; }
+  .msg { padding:10px 12px; border-radius:8px; margin-top:12px; display:none; }
+  .msg.err { display:block; background:#fdecea; color:#8a1c1c; }
+  .msg.ok { display:block; background:#e6f4ea; color:var(--ok); }
+  .tabs { display:flex; gap:8px; margin-bottom:14px; }
+  .tab { flex:1; font-size:15px; padding:11px; border-radius:8px; background:#fff; border:1px solid var(--line); cursor:pointer; }
+  .tab.on { background:var(--red); color:#fff; border-color:var(--red); }
+  .anchors { display:flex; justify-content:space-between; gap:12px; font-size:13px; color:var(--muted); margin:6px 0 4px; border-top:1px solid #eee; padding-top:8px; }
+  .anchors b { color:var(--ink); }
+  .rrow { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-top:1px solid #eee; }
+  .rrow .nm { font-weight:600; min-width:110px; }
+  .dots { display:flex; gap:6px; }
+  .dots input { display:none; }
+  .dots label { width:42px; height:42px; border-radius:50%; border:2px solid #444; display:flex; align-items:center; justify-content:center; font-weight:700; cursor:pointer; user-select:none; }
+  .dots input:checked + label { background:var(--red); border-color:var(--red); color:#fff; }
+  .lbl { font-weight:600; margin:12px 0 6px; display:block; }
+  .gcard { padding:0; overflow:hidden; }
+  .ghead { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; cursor:pointer; }
+  .ghead b { font-size:16px; }
+  .gbody { padding:0 18px 16px; border-top:1px solid #eee; }
+  .chip { font-size:13px; padding:3px 10px; border-radius:999px; background:#eee; }
+  .chip.done { background:#e6f4ea; color:var(--ok); }
+  .banner { background:#e8f0fe; color:#1a3d8f; padding:10px 12px; border-radius:8px; margin-bottom:14px; font-size:14px; }
+  @media (max-width:520px) { .rrow { flex-direction:column; align-items:flex-start; } .dots label { width:44px; height:44px; } }
+</style>
+</head>
+<body>
+<header><h1 id="title">Peer Evaluation</h1></header>
+<main>
+  <div id="loading" class="card">Loading…</div>
+
+  <!-- ===== Sign in ===== -->
+  <div id="signin" class="hidden">
+    <div class="card">
+      <h2>1. Which group are you in?</h2>
+      <div id="groupGrid" class="grid"></div>
+    </div>
+    <div id="whoCard" class="card hidden">
+      <h2>2. Who are you?</h2>
+      <div id="whoGrid" class="grid"></div>
+    </div>
+    <div id="idCard" class="card hidden">
+      <h2>3. Enter your SBU ID</h2>
+      <input id="sid" type="text" inputmode="numeric" autocomplete="off" placeholder="9-digit SBU ID">
+      <div style="margin-top:14px"><button class="main" id="loginBtn">Continue</button></div>
+      <div id="loginMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- ===== App ===== -->
+  <div id="app" class="hidden">
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div><b id="meName"></b> <span class="muted">· Group <span id="meGroup"></span></span></div>
+      <a href="#" id="logout" class="muted">Not you?</a>
+    </div>
+    <div class="tabs">
+      <button class="tab on" data-t="team">Part 1 · My team</button>
+      <button class="tab" data-t="pres">Part 2 · Presentations</button>
+    </div>
+
+    <!-- Part 1 -->
+    <div id="teamPane">
+      <div id="teamClosed" class="card muted hidden">Teammate evaluation is closed.</div>
+      <div id="teamForm">
+        <div class="banner">🔒 This part is <b>confidential</b>. Only the instructor and TA can see your answers — your teammates will never see them.</div>
+        <div id="teamDoneBanner" class="msg ok">You have already submitted. Submitting again will update your answers.</div>
+        <div id="teamQs"></div>
+        <div class="card qcard">
+          <div class="lbl" id="teamTextQ"></div>
+          <div id="didRows"></div>
+        </div>
+        <div class="card qcard">
+          <label class="lbl" for="selfA" id="selfQ"></label>
+          <textarea id="selfA" maxlength="2000" placeholder="e.g. wrote the data cleaning code and made the result plots"></textarea>
+          <label class="lbl" for="confA">Anything else the instructor should know about your team? (optional, confidential)</label>
+          <textarea id="confA" maxlength="2000"></textarea>
+        </div>
+        <button class="main" id="teamBtn">Submit Part 1</button>
+        <div id="teamMsg" class="msg"></div>
+      </div>
+    </div>
+
+    <!-- Part 2 -->
+    <div id="presPane" class="hidden">
+      <div id="presClosed" class="card muted hidden">Presentation evaluation is not open right now.</div>
+      <div id="presForm">
+        <div class="muted" style="margin-bottom:12px">Rate each group right after their presentation, then press <b>Submit</b> for that group. You can't rate your own group. Comments are shared anonymously with the group.</div>
+        <div id="presList"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+var INIT = null, ME = null, CRED = null, PICK = { group: null, idx: null };
+
+function $(id) { return document.getElementById(id); }
+function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function show(e, on) { e.classList.toggle('hidden', !on); }
+function msg(e, text, ok) { e.textContent = text; e.className = 'msg ' + (ok ? 'ok' : 'err'); }
+function clearMsg(e) { e.className = 'msg'; e.textContent = ''; }
+function errText(e) { return (e && e.message ? e.message : String(e)).replace(/^Exception:\s*/, ''); }
+
+function dots(name) {
+  var d = el('div', 'dots');
+  for (var v = 1; v <= 5; v++) {
+    var id = name + '_' + v;
+    var i = document.createElement('input'); i.type = 'radio'; i.name = name; i.value = v; i.id = id;
+    var l = el('label', null, String(v)); l.htmlFor = id;
+    d.appendChild(i); d.appendChild(l);
+  }
+  return d;
+}
+function val(name) { var c = document.querySelector('input[name="' + name + '"]:checked'); return c ? Number(c.value) : null; }
+function anchors(q) {
+  var a = el('div', 'anchors');
+  var L = el('div'); L.appendChild(el('b', null, '1 · ')); L.appendChild(document.createTextNode(q.low));
+  var R = el('div'); R.style.textAlign = 'right'; R.appendChild(el('b', null, '5 · ')); R.appendChild(document.createTextNode(q.high));
+  a.appendChild(L); a.appendChild(R); return a;
+}
+
+// ---------- Sign in ----------
+function renderSignin() {
+  var gg = $('groupGrid'); gg.innerHTML = '';
+  INIT.groups.forEach(function (g) {
+    var b = el('button', 'pick', g.label || ('Group ' + g.group));
+    b.onclick = function () {
+      PICK.group = g.group; PICK.idx = null;
+      gg.querySelectorAll('.pick').forEach(function (x) { x.classList.toggle('on', x === b); });
+      var wg = $('whoGrid'); wg.innerHTML = '';
+      g.members.forEach(function (m) {
+        var mb = el('button', 'pick', m.name);
+        mb.onclick = function () {
+          PICK.idx = m.idx;
+          wg.querySelectorAll('.pick').forEach(function (x) { x.classList.toggle('on', x === mb); });
+          show($('idCard'), true); $('sid').focus();
+        };
+        wg.appendChild(mb);
+      });
+      show($('whoCard'), true); show($('idCard'), false);
+    };
+    gg.appendChild(b);
+  });
+}
+
+$('loginBtn').onclick = function () {
+  var sid = $('sid').value.trim(), box = $('loginMsg'), btn = this;
+  clearMsg(box);
+  if (PICK.idx === null) return msg(box, 'Please select your name.');
+  if (!sid) return msg(box, 'Please enter your SBU ID.');
+  btn.disabled = true;
+  google.script.run
+    .withSuccessHandler(function (st) { btn.disabled = false; CRED = { idx: PICK.idx, sid: sid }; startApp(st); })
+    .withFailureHandler(function (e) { btn.disabled = false; msg(box, errText(e)); })
+    .login(PICK.idx, sid);
+};
+$('sid').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('loginBtn').click(); });
+
+// ---------- App ----------
+function startApp(st) {
+  ME = st;
+  show($('signin'), false); show($('app'), true);
+  $('meName').textContent = st.name; $('meGroup').textContent = st.group;
+  renderTeam(); renderPres(); window.scrollTo(0, 0);
+}
+
+function renderTeam() {
+  show($('teamClosed'), !ME.teamOpen); show($('teamForm'), ME.teamOpen);
+  $('teamDoneBanner').className = ME.teamDone ? 'msg ok' : 'msg';
+  var box = $('teamQs'); box.innerHTML = '';
+  INIT.teamQ.forEach(function (q, qi) {
+    var c = el('div', 'card qcard');
+    c.appendChild(el('h2', null, (qi + 1) + '. ' + q.q));
+    c.appendChild(anchors(q));
+    ME.teammates.forEach(function (m) {
+      var r = el('div', 'rrow'); r.appendChild(el('div', 'nm', m.name)); r.appendChild(dots('t' + qi + '_' + m.idx));
+      c.appendChild(r);
+    });
+    box.appendChild(c);
+  });
+  var n = INIT.teamQ.length;
+  $('teamTextQ').textContent = (n + 1) + '. ' + INIT.teamText;
+  $('selfQ').textContent = (n + 2) + '. ' + INIT.selfQ;
+  var dr = $('didRows'); dr.innerHTML = '';
+  ME.teammates.forEach(function (m) {
+    var r = el('div'); r.style.margin = '8px 0';
+    var lab = el('label', 'muted', m.name); lab.style.display = 'block'; lab.style.marginBottom = '4px';
+    var inp = document.createElement('input'); inp.type = 'text'; inp.id = 'did_' + m.idx; inp.maxLength = 500;
+    lab.htmlFor = inp.id; r.appendChild(lab); r.appendChild(inp); dr.appendChild(r);
+  });
+}
+
+$('teamBtn').onclick = function () {
+  var box = $('teamMsg'), btn = this; clearMsg(box);
+  var payload = { ratings: {}, did: {}, self: $('selfA').value, confidential: $('confA').value };
+  for (var k = 0; k < ME.teammates.length; k++) {
+    var m = ME.teammates[k], sc = [];
+    for (var qi = 0; qi < INIT.teamQ.length; qi++) {
+      var v = val('t' + qi + '_' + m.idx);
+      if (v === null) return msg(box, 'Please rate ' + m.name + ' on question ' + (qi + 1) + '.');
+      sc.push(v);
+    }
+    payload.ratings[m.idx] = sc;
+    payload.did[m.idx] = $('did_' + m.idx).value;
+  }
+  if (!payload.self.trim()) return msg(box, 'Please describe your own main contribution.');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+  google.script.run
+    .withSuccessHandler(function (st) {
+      ME = st; btn.disabled = false; btn.textContent = 'Submit Part 1';
+      $('teamDoneBanner').className = 'msg ok';
+      msg(box, 'Thank you! Part 1 is saved. Now go to Part 2 · Presentations.', true);
+      renderPres();
+    })
+    .withFailureHandler(function (e) { btn.disabled = false; btn.textContent = 'Submit Part 1'; msg(box, errText(e)); })
+    .submitTeam(CRED.idx, CRED.sid, payload);
+};
+
+function renderPres() {
+  show($('presClosed'), !ME.presOpen || !ME.presGroups.length); show($('presForm'), ME.presOpen && ME.presGroups.length > 0);
+  var list = $('presList'); list.innerHTML = '';
+  var opened = false;
+  ME.presGroups.forEach(function (g) {
+    var done = ME.presDone.indexOf(g) >= 0;
+    var c = el('div', 'card gcard');
+    var h = el('div', 'ghead'); h.appendChild(el('b', null, 'Group ' + g));
+    var chip = el('span', 'chip' + (done ? ' done' : ''), done ? '✓ Submitted' : 'Not rated yet'); h.appendChild(chip);
+    var b = el('div', 'gbody');
+    INIT.presQ.forEach(function (q, qi) {
+      var w = el('div'); w.style.padding = '12px 0 4px';
+      w.appendChild(el('div', 'lbl', (qi + 1) + '. ' + q.q)); w.appendChild(anchors(q));
+      var d = dots('p' + g + '_' + qi); d.style.marginTop = '6px'; w.appendChild(d);
+      b.appendChild(w);
+    });
+    var cl = el('label', 'lbl', 'Comments / suggestions for Group ' + g + ' (optional, anonymous)');
+    var ta = document.createElement('textarea'); ta.maxLength = 2000; ta.id = 'pc_' + g; cl.htmlFor = ta.id;
+    b.appendChild(cl); b.appendChild(ta);
+    var sb = el('button', 'main', done ? 'Update rating' : 'Submit rating for Group ' + g); sb.style.marginTop = '12px';
+    var mb = el('div', 'msg');
+    b.appendChild(sb); b.appendChild(mb);
+    var openNow = !done && !opened; if (openNow) opened = true;
+    show(b, openNow);
+    h.onclick = function () { show(b, b.classList.contains('hidden')); };
+    sb.onclick = function () {
+      clearMsg(mb);
+      var sc = [];
+      for (var qi = 0; qi < INIT.presQ.length; qi++) {
+        var v = val('p' + g + '_' + qi);
+        if (v === null) return msg(mb, 'Please answer question ' + (qi + 1) + '.');
+        sc.push(v);
+      }
+      sb.disabled = true; sb.textContent = 'Submitting…';
+      google.script.run
+        .withSuccessHandler(function (st) {
+          ME = st; renderPres();
+          var t = el('div', 'msg ok', '✓ Your rating for Group ' + g + ' was saved.');
+          $('presList').insertBefore(t, $('presList').firstChild);
+          window.scrollTo(0, 0);
+        })
+        .withFailureHandler(function (e) { sb.disabled = false; sb.textContent = 'Submit rating for Group ' + g; msg(mb, errText(e)); })
+        .submitPresentation(CRED.idx, CRED.sid, g, sc, ta.value);
+    };
+    c.appendChild(h); c.appendChild(b); list.appendChild(c);
+  });
+}
+
+document.querySelectorAll('.tab').forEach(function (b) {
+  b.onclick = function () {
+    document.querySelectorAll('.tab').forEach(function (x) { x.classList.toggle('on', x === b); });
+    show($('teamPane'), b.dataset.t === 'team'); show($('presPane'), b.dataset.t === 'pres');
+    window.scrollTo(0, 0);
+  };
+});
+$('logout').onclick = function (e) {
+  e.preventDefault(); CRED = null; ME = null; PICK = { group: null, idx: null }; $('sid').value = '';
+  renderSignin(); show($('whoCard'), false); show($('idCard'), false);
+  show($('app'), false); show($('signin'), true);
+};
+
+var TEST = false;
+function loadInit() {
+google.script.run
+  .withSuccessHandler(function (d) {
+    INIT = d; $('title').textContent = d.title; document.title = d.title;
+    if (TEST) $('title').textContent += ' — TEST MODE';
+    renderSignin(); show($('loading'), false); show($('signin'), true);
+  })
+  .withFailureHandler(function (e) { $('loading').textContent = 'Could not load: ' + errText(e); })
+  .getInitData(TEST);
+}
+try {
+  google.script.url.getLocation(function (loc) { TEST = !!(loc && loc.parameter && loc.parameter.test === '1'); loadInit(); });
+} catch (e) { loadInit(); }
+</script>
+</body>
+</html>
