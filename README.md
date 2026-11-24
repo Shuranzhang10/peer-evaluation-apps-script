@@ -85,6 +85,7 @@ Open the web-app URL with **`?test=1`** at the end. A **TEST (instructors)** gro
 | Test Student C | `000000003` |
 
 Students never see this group, and test responses are excluded from all results.
+To see the colored results with test data, use **Peer Eval → Preview results incl. test data** (run **Build results** again afterwards for the real results).
 To remove test responses, use **Peer Eval → Clear test data** in the Sheet.
 
 ## Viewing results

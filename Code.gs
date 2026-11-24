@@ -59,6 +59,7 @@ const ROSTER = [
 ];
 
 const TEST_GROUP = 0;  // hidden test group: only shown with ?test=1, excluded from results
+let PREVIEW_TEST_ = false;  // true only inside previewWithTestData()
 const SH = { SETTINGS: 'Settings', TEAM: 'Teammate', SELF: 'Self', PRES: 'Presentation' };
 const COLORS = { dg: '#57d163', lg: '#c3efc8', wh: '#ffffff', ye: '#fff176', re: '#f4a3a0', na: '#eeeeee' };
 
@@ -67,6 +68,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('Peer Eval')
     .addItem('Set up sheets', 'setup')
     .addItem('Build results', 'buildResults')
+    .addItem('Preview results incl. test data', 'previewWithTestData')
     .addItem('Clear test data', 'clearTestData')
     .addToUi();
 }
@@ -297,6 +299,13 @@ function clearTestData() {
   });
 }
 
+// Builds the result sheets INCLUDING the hidden TEST group, so the colors can be checked while testing.
+// Run "Build results" again afterwards to get the real (test-free) results.
+function previewWithTestData() {
+  PREVIEW_TEST_ = true;
+  try { buildResults(); } finally { PREVIEW_TEST_ = false; }
+}
+
 // ===================== Results (VIP-style colors) =====================
 /**
  * Every cell shows "score / rater's average" where the rater's average is taken over all
@@ -343,7 +352,7 @@ function readRows_(ss, name, ncol) {
   const sh = ss.getSheetByName(name);
   if (!sh || sh.getLastRow() < 2) return [];
   return sh.getRange(2, 1, sh.getLastRow() - 1, ncol).getValues()
-    .filter(r => r[1] !== '' && !(r[2] !== '' && Number(r[2]) === TEST_GROUP));
+    .filter(r => r[1] !== '' && (PREVIEW_TEST_ || !(r[2] !== '' && Number(r[2]) === TEST_GROUP)));
 }
 
 function freshSheet_(ss, name) {
@@ -377,7 +386,7 @@ function buildTeamResults_(ss) {
     ['Cells show score / that rater\'s average on the question. Colors: dark green > +1 SD, light green +0.5..1, white ±0.5, yellow -0.5..-1, red < -1 SD (relative to how that rater scored their other teammates).'],
   ], null, [0]) + 1;
 
-  allGroups_().forEach(g => {
+  allGroups_().concat(PREVIEW_TEST_ ? [TEST_GROUP] : []).forEach(g => {
     const members = ROSTER.filter(s => s.group === g).map(s => s.name);
     r = writeBlock_(sh, r, [['Group ' + g]], [[COLORS.na]], [0]);
 
